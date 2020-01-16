@@ -1,0 +1,563 @@
+#! /usr/bin/env python2
+
+# Importacion de namespaces
+
+import getopt
+import sys
+from docx import Document
+from ssh2.session import Session
+import socket
+
+#try:
+opts, args = getopt.getopt(sys.argv[1:], "h:", ['hostname=',
+                                                        ])
+#except  getopt.error, msg:
+#    print(msg)
+
+for opt, arg in opts:
+    if opt in ('-h', '--hostname'):
+        hostname = arg
+
+
+
+# Funcion de ejecucion de comandos mediante ssh
+
+def conexionSSH(dest_host, comando):
+    comandoOut = ''
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((dest_host, 22))
+
+    session = Session()
+    session.handshake(sock)
+
+    session.userauth_publickey_fromfile('root', '/home/test/.ssh/id_rsa')
+
+    channel = session.open_session()
+    channel.execute(comando)
+    size, data = channel.read()
+    if size > 0:
+        comandoOut = data.decode('utf-8')
+    channel.close()
+
+    if not comandoOut:
+        comandoOut = 'Sin configurar'
+    return comandoOut
+
+
+# Comandos a ejecutar para la recogida de informacion
+
+
+n_cpus = conexionSSH(hostname, 'cat /proc/cpuinfo | grep processor | wc -l')
+s_RAM = conexionSSH(hostname, 'free -m | grep Mem | awk \'{print $2}\'')
+os = conexionSSH(hostname, 'cat /etc/*release | grep PRETTY_NAME | cut -d\\" -f2')
+os_version = conexionSSH(hostname, 'cat /etc/*release | grep release | sort -urn')
+n_disks = conexionSSH(hostname, 'lsblk | grep disk | wc -l')
+disks = str(conexionSSH(hostname, 'lsblk | grep disk'))
+df = conexionSSH(hostname, 'df -T')
+fstab_file = conexionSSH(hostname, 'cat /etc/fstab | grep -v \'#\'')
+ip_a = conexionSSH(hostname, '/usr/sbin/ip a')
+ip_r = conexionSSH(hostname, '/usr/sbin/ip r')
+ip_a_txt = conexionSSH(hostname, '/usr/sbin/ip a')
+ip_r_txt = conexionSSH(hostname, '/usr/sbin/ip a')
+resolv = conexionSSH(hostname, 'cat /etc/resolv.conf')
+crontab = conexionSSH(hostname, 'ls /var/spool/cron/crontabs/')
+localusers = conexionSSH(hostname, 'grep -v \'^#\' /etc/passwd')
+localgroups = conexionSSH(hostname, 'grep -v \'^#\' /etc/group')
+AD = conexionSSH(hostname, '/usr/sbin/realm list')
+ssh = conexionSSH(hostname, 'sudo grep -v \'^#\' /etc/ssh/sshd_config | grep .')
+sudo = conexionSSH(hostname, 'sudo grep -v \'^#\' /etc/sudoers | grep .')
+ps = conexionSSH(hostname, 'sudo /usr/bin/ps -ef --sort=-pcpu | head -n 10')
+listen = conexionSSH(hostname, '/sbin/ss -tpan | grep LISTEN')
+established = conexionSSH(hostname, '/sbin/ss -tpan | grep ESTAB')
+last_start = conexionSSH(hostname, '/bin/who | tail -30')
+messages = conexionSSH(hostname, 'tail -30 /var/log/messages')
+sync_ntp = conexionSSH(hostname, 'ntpq -p')
+ntp = conexionSSH(hostname, 'cat /etc/ntp.conf')
+disk_fs = conexionSSH(hostname, '/bin/lsblk -f')
+ops_fs = conexionSSH(hostname, '/bin/mount')
+automount = conexionSSH(hostname, 'cat /etc/master.auto')
+nfs = conexionSSH(hostname, 'cat /etc/exports')
+ps_onboot = conexionSSH(hostname, '/bin/systemctl list-units --type service | grep enabled')
+use_cpu = conexionSSH(hostname, 'mpstat -P ALL')
+use_mem = conexionSSH(hostname, '/bin/free -m')
+use_disks = conexionSSH(hostname, '/bin/iostat')
+top_cpu = conexionSSH(hostname, 'ps -auxf | sort -nr -k 3 | head -10')
+top_mem = conexionSSH(hostname, 'ps -auxf | sort -nr -k 4 | head -10')
+seg_con_users = conexionSSH(hostname, '/bin/w | tail -30')
+seg_act_users = conexionSSH(hostname, '/bin/last | tail -30')
+seg_last_log = conexionSSH(hostname, 'tail -30 /var/log/secure')
+ens_com_pass = conexionSSH(hostname, 'cat /etc/security/pwquality.conf')
+ens_age_pass = conexionSSH(hostname, 'grep DAYS /etc/login.defs ')
+ens_fs_xfs = conexionSSH(hostname, 'mount | grep -i xfs')
+ens_uid_users = conexionSSH(hostname, 'cat /etc/passwd | awk \'{print $1,$4}\' | grep \":0\"')
+ens_nopass = conexionSSH(hostname, 'grep \"!!\" /etc/shadow')
+ens_fw_state = conexionSSH(hostname, '/bin/systemctl is-active firewalld')
+ens_fw_rules = conexionSSH(hostname, 'sudo /sbin/iptables -L')
+ens_selinux = conexionSSH(hostname, '/sbin/sestatus | grep \"SELinux\ status\"')
+ens_auditd = conexionSSH(hostname, '/bin/systemctl is-active auditd')
+ens_ipv6 = conexionSSH(hostname, '/bin/sysctl -a | grep disable_ipv6')
+ens_tcpwrappers = conexionSSH(hostname, 'cat /etc/hosts.*')
+ens_user_limits = conexionSSH(hostname, 'cat /etc/secure/limits.conf')
+ens_quota = conexionSSH(hostname, '/sbin/quotacheck -auvg')
+rpm = conexionSSH(hostname, 'rpm -qa')
+
+
+
+
+
+
+
+# Escritura de documento Word basandose en plantilla y relleneando con los datos obtenidos de la ejecucion de los comandos
+
+document = Document('Doc_template.docx')
+
+for paragraph in document.paragraphs:
+    if '<hostname>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<hostname>' in inline[i].text:
+                text_raw = inline[i].text.replace('<hostname>', hostname)
+                text = text_raw.replace('\n', '')
+                inline[i].text = text
+
+    if '<n_cpus>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<n_cpus>' in inline[i].text:
+                text_raw = inline[i].text.replace('<n_cpus>', str(n_cpus))
+                text = text_raw.replace('\n', '')
+                inline[i].text = text
+
+    if '<n_disks>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<n_disks>' in inline[i].text:
+                text_raw = inline[i].text.replace('<n_disks>', str(n_disks))
+                text = text_raw.replace('\n', '')
+                inline[i].text = text
+
+    if '<s_RAM>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<s_RAM>' in inline[i].text:
+                text_raw = inline[i].text.replace('<s_RAM>', str(s_RAM))
+                text = text_raw.replace('\n', '')
+                inline[i].text = text
+
+    if '<disks>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<disks>' in inline[i].text:
+                text_raw = inline[i].text.replace('<disks>', disks)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<os>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<os>' in inline[i].text:
+                text_raw = inline[i].text.replace('<os>', os)
+                text = text_raw.replace('\n', '')
+                inline[i].text = text
+
+    if '<os_version>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<os_version>' in inline[i].text:
+                text_raw = inline[i].text.replace('<os_version>', str(os_version))
+                text = text_raw.replace('\n', '')
+                inline[i].text = text
+
+    if '<firewalld_status>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<firewalld_status>' in inline[i].text:
+                text_raw = inline[i].text.replace('<firewalld_status>', str(firewalld_status))
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<selinux_status>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<selinux_status>' in inline[i].text:
+                text_raw = inline[i].text.replace('<selinux_status>', str(selinux_status))
+                text = text_raw.replace('\n', '')
+                inline[i].text = text
+
+    if '<df>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<df>' in inline[i].text:
+                text_raw = inline[i].text.replace('<df>', df)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<fstab_file>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<fstab_file>' in inline[i].text:
+                text_raw = inline[i].text.replace('<fstab_file>', str(fstab_file))
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ip_a>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ip_a>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ip_a>', ip_a)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ip_r>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ip_r>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ip_r>', ip_r)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<crontab>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<crontab>' in inline[i].text:
+                text_raw = inline[i].text.replace('<crontab>', str(crontab))
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<resolv>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<resolv>' in inline[i].text:
+                text_raw = inline[i].text.replace('<resolv>', str(resolv))
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<localusers>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<localusers>' in inline[i].text:
+                text_raw = inline[i].text.replace('<localusers>', localusers)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<localgroups>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<localgroups>' in inline[i].text:
+                text_raw = inline[i].text.replace('<localgroups>', localgroups)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<AD>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<AD>' in inline[i].text:
+                text_raw = inline[i].text.replace('<AD>', AD)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ssh>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ssh>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ssh>', ssh)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<sudo>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<sudo>' in inline[i].text:
+                text_raw = inline[i].text.replace('<sudo>', sudo)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ps>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ps>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ps>', ps)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<listen>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<listen>' in inline[i].text:
+                text_raw = inline[i].text.replace('<listen>', listen)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<established>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<established>' in inline[i].text:
+                text_raw = inline[i].text.replace('<established>', established)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<last_start>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<last_start>' in inline[i].text:
+                text_raw = inline[i].text.replace('<last_start>', last_start)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<messages>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<messages>' in inline[i].text:
+                text_raw = inline[i].text.replace('<messages>', messages)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<sync_ntp>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<sync_ntp>' in inline[i].text:
+                text_raw = inline[i].text.replace('<sync_ntp>', sync_ntp)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ntp>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ntp>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ntp>', ntp)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<disk_fs>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<disk_fs>' in inline[i].text:
+                text_raw = inline[i].text.replace('<disk_fs>', disk_fs)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ops_fs>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ops_fs>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ops_fs>', ops_fs)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<automount>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<automount>' in inline[i].text:
+                text_raw = inline[i].text.replace('<automount>', automount)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<nfs>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<nfs>' in inline[i].text:
+                text_raw = inline[i].text.replace('<nfs>', nfs)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ps_onboot>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ps_onboot>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ps_onboot>', ps_onboot)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<use_cpu>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<use_cpu>' in inline[i].text:
+                text_raw = inline[i].text.replace('<use_cpu>', use_cpu)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<use_mem>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<use_mem>' in inline[i].text:
+                text_raw = inline[i].text.replace('<use_mem>', use_mem)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<use_disks' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<use_disks>' in inline[i].text:
+                text_raw = inline[i].text.replace('<use_disks>', use_disks)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<top_cpu>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<top_cpu>' in inline[i].text:
+                text_raw = inline[i].text.replace('<top_cpu>', top_cpu)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<top_mem>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<top_mem>' in inline[i].text:
+                text_raw = inline[i].text.replace('<top_mem>', top_mem)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<seg_con_users>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<seg_con_users>' in inline[i].text:
+                text_raw = inline[i].text.replace('<seg_con_users>', seg_con_users)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<seg_act_users>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<seg_act_users>' in inline[i].text:
+                text_raw = inline[i].text.replace('<seg_act_users>', seg_act_users)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ops_fs>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ops_fs>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ops_fs>', ops_fs)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<seg_last_log>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<seg_last_log>' in inline[i].text:
+                text_raw = inline[i].text.replace('<seg_last_log>', seg_last_log)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_com_pass>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_com_pass>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_com_pass>', ens_com_pass)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<seg_last_log>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<seg_last_log>' in inline[i].text:
+                text_raw = inline[i].text.replace('<seg_last_log>', seg_last_log)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_age_pass>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_age_pass>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_age_pass>', ens_age_pass)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_fs_xfs>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_fs_xfs>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_fs_xfs>', ens_fs_xfs)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_uid_users>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_uid_users>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_uid_users>', ens_uid_users)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_nopass>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_nopass>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_nopass>', ens_nopass)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_fw_state>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_fw_state>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_fw_state>', ens_fw_state)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_fw_rules>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_fw_rules>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_fw_rules>', ens_fw_rules)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_selinux>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_selinux>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_selinux>', ens_selinux)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_auditd>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_auditd>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_auditd>', ens_auditd)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_ipv6>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_ipv6>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_ipv6>', ens_ipv6)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_tcpwrappers>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_tcpwrappers>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_tcpwrappers>', ens_tcpwrappers)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_user_limits>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_user_limits>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_user_limits>', ens_user_limits)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ens_quota>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ens_quota>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ens_quota>', ens_quota)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<rpm>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<rpm>' in inline[i].text:
+                text_raw = inline[i].text.replace('<rpm>', rpm)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+document.save('/tmp/' + hostname + '.docx')
