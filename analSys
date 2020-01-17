@@ -8,17 +8,18 @@ from docx import Document
 from ssh2.session import Session
 import socket
 
-#try:
-opts, args = getopt.getopt(sys.argv[1:], "h:", ['hostname=',
+try:
+    opts, args = getopt.getopt(sys.argv[1:], "h:u:", ['hostname=',
+                                                  'user=',
                                                         ])
-#except  getopt.error, msg:
-#    print(msg)
+except  getopt.error, msg:
+    print(msg)
 
 for opt, arg in opts:
     if opt in ('-h', '--hostname'):
         hostname = arg
-
-
+    elif opt in ('-u', '--user'):
+        user = arg
 
 # Funcion de ejecucion de comandos mediante ssh
 
@@ -46,8 +47,7 @@ def conexionSSH(dest_host, comando):
 
 # Comandos a ejecutar para la recogida de informacion
 
-
-n_cpus = conexionSSH(hostname, 'cat /proc/cpuinfo | grep processor | wc -l')
+n_cpus = conexionSSH(hostname, 'sudo cat /proc/cpuinfo | grep processor | wc -l')
 s_RAM = conexionSSH(hostname, 'free -m | grep Mem | awk \'{print $2}\'')
 os = conexionSSH(hostname, 'cat /etc/*release | grep PRETTY_NAME | cut -d\\" -f2')
 os_version = conexionSSH(hostname, 'cat /etc/*release | grep release | sort -urn')
@@ -101,15 +101,32 @@ ens_user_limits = conexionSSH(hostname, 'cat /etc/secure/limits.conf')
 ens_quota = conexionSSH(hostname, '/sbin/quotacheck -auvg')
 rpm = conexionSSH(hostname, 'rpm -qa')
 
-
-
-
-
-
-
 # Escritura de documento Word basandose en plantilla y relleneando con los datos obtenidos de la ejecucion de los comandos
 
 document = Document('Doc_template.docx')
+core_properties = document.core_properties
+core_properties.author = user
+core_properties.title = hostname
+
+for table in document.tables:
+    for row in table.rows:
+        for cell in row.cells:
+            for paragraph in cell.paragraphs:
+                if '<hostname>' in paragraph.text:
+                    inline = paragraph.runs
+                    for i in range(len(inline)):
+                        if '<hostname>' in inline[i].text:
+                            text_raw = inline[i].text.replace('<hostname>', hostname)
+                            text = text_raw.replace('\n', '')
+                            inline[i].text = text
+
+                if '<name_surname>' in paragraph.text:
+                    inline = paragraph.runs
+                    for i in range(len(inline)):
+                        if '<name_surname>' in inline[i].text:
+                            text_raw = inline[i].text.replace('<name_surname>', user)
+                            text = text_raw.replace('\n', '')
+                            inline[i].text = text
 
 for paragraph in document.paragraphs:
     if '<hostname>' in paragraph.text:
@@ -117,6 +134,14 @@ for paragraph in document.paragraphs:
         for i in range(len(inline)):
             if '<hostname>' in inline[i].text:
                 text_raw = inline[i].text.replace('<hostname>', hostname)
+                text = text_raw.replace('\n', '')
+                inline[i].text = text
+
+    if '<name_surname>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<name_surname>' in inline[i].text:
+                text_raw = inline[i].text.replace('<name_surname>', user)
                 text = text_raw.replace('\n', '')
                 inline[i].text = text
 
