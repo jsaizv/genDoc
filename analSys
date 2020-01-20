@@ -47,6 +47,7 @@ def conexionSSH(dest_host, comando):
 
 # Comandos a ejecutar para la recogida de informacion
 
+virtual = conexionSSH(hostname, 'sudo virt-what')
 n_cpus = conexionSSH(hostname, 'sudo cat /proc/cpuinfo | grep processor | wc -l')
 s_RAM = conexionSSH(hostname, 'free -m | grep Mem | awk \'{print $2}\'')
 os = conexionSSH(hostname, 'cat /etc/*release | grep PRETTY_NAME | cut -d\\" -f2')
@@ -57,8 +58,8 @@ df = conexionSSH(hostname, 'df -T')
 fstab_file = conexionSSH(hostname, 'cat /etc/fstab | grep -v \'#\'')
 ip_a = conexionSSH(hostname, '/usr/sbin/ip a')
 ip_r = conexionSSH(hostname, '/usr/sbin/ip r')
-ip_a_txt = conexionSSH(hostname, '/usr/sbin/ip a')
-ip_r_txt = conexionSSH(hostname, '/usr/sbin/ip a')
+ip_a_txt = conexionSSH(hostname, 'cat /etc/sysconfig/network-scripts/ifcfg-*')
+ip_r_txt = conexionSSH(hostname, 'cat /etc/sysconfig/network-scripts/*routes*')
 resolv = conexionSSH(hostname, 'cat /etc/resolv.conf')
 crontab = conexionSSH(hostname, 'ls /var/spool/cron/crontabs/')
 localusers = conexionSSH(hostname, 'grep -v \'^#\' /etc/passwd')
@@ -136,6 +137,19 @@ for paragraph in document.paragraphs:
                 text_raw = inline[i].text.replace('<hostname>', hostname)
                 text = text_raw.replace('\n', '')
                 inline[i].text = text
+
+    if '<virtual>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<virtual>' in inline[i].text:
+                if not virtual:
+                    text_raw = inline[i].text.replace('<virtual>', 'fisica')
+                    text = text_raw.replace('\n', '')
+                    inline[i].text = text
+                else:
+                    text_raw = inline[i].text.replace('<virtual>', virtual)
+                    text = text_raw.replace('\n', '')
+                    inline[i].text = text
 
     if '<name_surname>' in paragraph.text:
         inline = paragraph.runs
@@ -238,6 +252,22 @@ for paragraph in document.paragraphs:
         for i in range(len(inline)):
             if '<ip_r>' in inline[i].text:
                 text_raw = inline[i].text.replace('<ip_r>', ip_r)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ip_a_txt>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ip_a_txt>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ip_a_txt>', ip_a_txt)
+                text = text_raw.replace('\n', '\n\n')
+                inline[i].text = text
+
+    if '<ip_r_txt>' in paragraph.text:
+        inline = paragraph.runs
+        for i in range(len(inline)):
+            if '<ip_r_txt>' in inline[i].text:
+                text_raw = inline[i].text.replace('<ip_r_txt>', ip_r_txt)
                 text = text_raw.replace('\n', '\n\n')
                 inline[i].text = text
 
